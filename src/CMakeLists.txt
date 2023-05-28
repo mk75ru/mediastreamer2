@@ -84,6 +84,7 @@ set(VOIP_SOURCE_FILES_C
 	audiofilters/msvaddtx.c
 	audiofilters/msvolume.c
 	audiofilters/tonedetector.c
+	audiofilters/webrtc.c
 	audiofilters/ulaw.c
 	audiofilters/waveheader.h
 	crypto/dtls_srtp.c

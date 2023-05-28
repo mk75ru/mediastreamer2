@@ -367,7 +367,7 @@ include_directories(
 )
 
 set(MEDIASTREAMER2_INCLUDE_DIRS )
-set(LINK_LIBS bctoolbox ortp)
+set(LINK_LIBS bctoolbox ortp webrtc_audio_processing)
 
 if(WIN32)
 	if(NOT CMAKE_SYSTEM_NAME STREQUAL "WindowsPhone" AND NOT CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")

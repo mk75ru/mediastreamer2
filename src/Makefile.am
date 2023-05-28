@@ -148,6 +148,7 @@ libmediastreamer_voip_la_SOURCES+=	audiofilters/alaw.c \
 					audiofilters/chanadapt.c \
 					audiofilters/audiomixer.c \
 					audiofilters/tonedetector.c \
+					audiofilters/webrtc.c \
 					audiofilters/devices.c \
 					utils/g722.h \
 					utils/g722_decode.c \

@@ -165,18 +165,26 @@ static void webrtc_ec_process(MSFilter *f)
 	float rms;
 
 	if (s->bypass_mode) {
+		// Обходной режим
 		while ((refm = ms_queue_get(f->inputs[0])) != NULL) {
+		    // Принимаем от удаленного абонента и посылаем на звуковую карту
 			ms_queue_put(f->outputs[0], refm);
 		}
 		while ((refm = ms_queue_get(f->inputs[1])) != NULL) {
+		    // Принимаем от звуковой карты и посылаем  удаленному абоненту
 			ms_queue_put(f->outputs[1], refm);
 		}
 		return;
 	}
 
 	if (f->inputs[0]!=NULL) {
+		// Принимаем от удаленного абонента
 		if (s->echostarted) {
+			//Есть данные полученные с микрофона и содержащие эхо
+
+			// Получаем данные от удаленного абонента
 			while((refm=ms_queue_get(f->inputs[0]))!=NULL) {
+				// Помещаем их в буфер
 				ms_bufferizer_put(&s->delayed_ref, dupmsg(refm));
 				ms_flow_controlled_bufferizer_put(&s->ref, refm);
 			}
@@ -186,19 +194,24 @@ static void webrtc_ec_process(MSFilter *f)
 		}
 	}
 
+    // Получаем данные от микрофона и помещаем их в буфер
 	ms_bufferizer_put_from_queue(&s->echo, f->inputs[1]);
 
 	while (ms_bufferizer_read(&s->echo, (uint8_t*)echo, nbytes) >= nbytes) {
+		// Читаем данные полученные с микрофона из буфера и содержащие эхо
 		mblk_t *oecho = allocb(nbytes, 0);
 		int avail;
 
 		if (!s->echostarted) s->echostarted = TRUE;
 		if ((avail = ms_bufferizer_get_avail(&s->delayed_ref)) < ((s->nominal_ref_samples * 2) + nbytes)) {
 			/*we don't have enough to read in a reference signal buffer, inject silence instead*/
+			/*у нас недостаточно данных для чтения в буфере эталонного сигнала, добавляем тишину*/
 			refm = allocb(nbytes, 0);
 			memset(refm->b_wptr, 0, nbytes);
 			refm->b_wptr += nbytes;
+			// Помещаем данные в буфер
 			ms_bufferizer_put(&s->delayed_ref, refm);
+			// Отправляем данные на звуковую карту
 			ms_queue_put(f->outputs[0], dupmsg(refm));
 			if (!s->using_zeroes) {
 				ms_warning("Not enough ref samples, using zeroes");
@@ -327,18 +340,26 @@ static MSFilterMethod webrtc_ec_methods[]={
 };
 
 MSFilterDesc ms_webrtc_ec_desc={
-	.id=MS_WEBRTC_EC_ID,
-	.name="MSWebRTCAECM",
-	.text=N_("Echo canceller using webrtc library"),
-	.category=MS_FILTER_OTHER,
-	.ninputs=2,
-	.noutputs=2,
-	.init=webrtc_ec_init,
-	.preprocess=webrtc_ec_preprocess,
-	.process=webrtc_ec_process,
-	.postprocess=webrtc_ec_postprocess,
-	.uninit=webrtc_ec_uninit,
-	.methods=webrtc_ec_methods
+
+	.id=MS_WEBRTC_EC_ID,  /* Идентификатор типа фильтра заданный в allfilters.h или нами самими.*/
+	.name="MSWebRTCAECM", /* Имя фильтра.*/
+	.text=N_("Echo canceller using webrtc library"), /*Короткий текст , описывающий фильтр.*/
+	.category=MS_FILTER_OTHER,  /* Категория фильтра, описывающая роль. */
+	.ninputs=2, /* Количество входов. */
+	.noutputs=2, /* Количество выходов. */
+	.init=webrtc_ec_init, /* Функция начальной инициализации фильтра. */
+	.preprocess=webrtc_ec_preprocess, /* Функция вызываемая однократно перед запуском фильтра в работу */
+	.process=webrtc_ec_process,  /* Функция выполняющая основную работу фильтра ,
+								  вызываемая на каждый тик тикера MSTicker. */
+	.postprocess=webrtc_ec_postprocess, /* Функция завершения работы фильтра ,
+										 вызывается однократно после последнего вызова process(),
+										 перед удалением фильтра. */
+	.uninit=webrtc_ec_uninit, /*
+								Функция завершения работы фильтра,
+								выполняет освобождение памяти, которая была занята при создании внутренних
+								структур фильтра.
+							  */
+	.methods=webrtc_ec_methods /* Таблица методов фильтра. */
 };
 
 MS_FILTER_DESC_EXPORT(ms_webrtc_ec_desc)

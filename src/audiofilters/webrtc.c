@@ -212,7 +212,7 @@ static void webrtc_ec_process(MSFilter *f)
 			// Помещаем данные в буфер
 			ms_bufferizer_put(&s->delayed_ref, refm);
 			// Отправляем данные на звуковую карту
-			ms_queue_put(f->outputs[0], dupmsg(refm));
+			//ms_queue_put(f->outputs[0], dupmsg(refm));
 			if (!s->using_zeroes) {
 				ms_warning("Not enough ref samples, using zeroes");
 				s->using_zeroes = TRUE;

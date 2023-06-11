@@ -30,6 +30,9 @@
 
 #define channel_count 1
 
+#define EC_DUMP 1
+#define EC_DUMP_PREFIX "/var/log/"
+
 typedef struct {
 	float sum;
 	int cnt;
@@ -58,6 +61,11 @@ typedef struct webrtc_ec {
 	int tail_length_ms;
 	int nominal_ref_samples;
 	int samplerate;
+#ifdef EC_DUMP
+	FILE *echofile;
+	FILE *reffile;
+	FILE *cleanfile;
+#endif
 	bool_t echostarted;
 	bool_t bypass_mode;
 	bool_t using_zeroes;
@@ -97,15 +105,36 @@ static void webrtc_ec_init(MSFilter *f)
 	ms_bufferizer_init(&s->echo);
 	ms_flow_controlled_bufferizer_init(&s->ref, f, s->samplerate, channel_count);
 
+#ifdef EC_DUMP
+	{
+		char *fname = ms_strdup_printf("%s/mswebrtcaec-%p-echo.raw", EC_DUMP_PREFIX, f);
+		s->echofile = fopen(fname, "w");
+		ms_free(fname);
+		fname = ms_strdup_printf("%s/mswebrtcaec-%p-ref.raw", EC_DUMP_PREFIX, f);
+		s->reffile = fopen(fname, "w");
+		ms_free(fname);
+		fname = ms_strdup_printf("%s/mswebrtcaec-%p-clean.raw", EC_DUMP_PREFIX, f);
+		s->cleanfile = fopen(fname, "w");
+		ms_free(fname);
+	}
+#endif
+
+
 	f->data=s;
 
-	printf( "webrtc_ec_init\n");
+	printf( "-- webrtc_ec_init-- \n");
 }
 
 static void webrtc_ec_uninit(MSFilter *f)
 {
 	webrtc_ec *s=(webrtc_ec*)f->data; (void)s;
 	ms_bufferizer_uninit(&s->delayed_ref);
+#ifdef EC_DUMP
+	if (s->echofile)
+		fclose(s->echofile);
+	if (s->reffile)
+		fclose(s->reffile);
+#endif
 	ms_free(s);
 }
 
@@ -261,6 +290,14 @@ static void webrtc_ec_process(MSFilter *f)
 			ms_fatal("Should never happen");
 		}
 
+#ifdef EC_DUMP
+		if (s->reffile)
+			fwrite(ref, nbytes, 1, s->reffile);
+		if (s->echofile)
+			fwrite(echo, nbytes, 1, s->echofile);
+#endif
+
+
 		WebRtcAecm_BufferFarend(s->AEC_inst, ref, s->framesize);
 		buf_ptr = echo;
 		out_buf_ptr = tmp_buf;
@@ -274,6 +311,11 @@ static void webrtc_ec_process(MSFilter *f)
 				memset(oecho->b_wptr, 0, nbytes);
 			}
 		}
+
+#ifdef EC_DUMP
+		if (s->cleanfile)
+			fwrite(oecho->b_wptr, nbytes, 1, s->cleanfile);
+#endif
 
 		oecho->b_wptr += nbytes;
 		ms_queue_put(f->outputs[1], oecho);

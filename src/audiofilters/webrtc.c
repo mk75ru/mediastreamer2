@@ -30,7 +30,7 @@
 
 #define channel_count 1
 
-#define EC_DUMP 1
+//#define EC_DUMP 1
 #define EC_DUMP_PREFIX "/var/log/"
 
 typedef struct {
@@ -41,7 +41,7 @@ typedef struct {
 
 typedef struct webrtc_ec {
     void *AEC_inst;
-    NsHandle *NS_inst;
+    NsHandle *NS_inst; //хандло для noise supressions
 	MSBufferizer delayed_ref;
 	MSBufferizer echo;
 	/*
@@ -171,12 +171,15 @@ static void webrtc_ec_preprocess(MSFilter *f)
 
 static int handleRms(webrtc_ec *s, rms_t *r, int16_t *sig, float *result)
 {
+	// Перебираем элементы фрейм
 	for (int i = 0; i < s->framesize; ++i) {
+		// Возводим в квадрат элемент фрейма c эхо и суммируем
 		r->sum += (float)sig[i] * (float)sig[i];
 		r->cnt++;
 	}
-	if (r->cnt >= r->max) {
-		*result = r->sum / (float)r->cnt;
+	if (r->cnt >= r->max) { // число элементов во фрейме превышает максимальное.
+							// фрейм заполнен?
+		*result = r->sum / (float)r->cnt; // Среднее квадратов
 		r->sum = 0;
 		r->cnt = 0;
 		return 1;
@@ -297,17 +300,48 @@ static void webrtc_ec_process(MSFilter *f)
 			fwrite(echo, nbytes, 1, s->echofile);
 #endif
 
-
-		WebRtcAecm_BufferFarend(s->AEC_inst, ref, s->framesize);
+		// Вставляет блок данных из 80 или 160 выборок в буфер дальнего конца.
+		WebRtcAecm_BufferFarend(s->AEC_inst,
+								// Входящий буфер, содержащий один кадр сигнала дальнего конца.
+								ref,
+								s->framesize);
 		buf_ptr = echo;
 		out_buf_ptr = tmp_buf;
-		WebRtcNsx_Process(s->NS_inst, &buf_ptr, channel_count, &out_buf_ptr);
+
+		// Эта функция выполняет подавление шума для вставленного речевого кадра.
+		// Входные и выходные сигналы всегда должны быть 10 мс (80 или 160 выборок).
+		WebRtcNsx_Process(
+			s->NS_inst,
+			// Указатель на буфер речевого кадра для каждого диапазона
+			&buf_ptr,
+			// Количество полос
+			channel_count,
+			// Указатель на выходной кадр для каждого диапазона
+			&out_buf_ptr);
 		buf_ptr = out_buf_ptr;
 		out_buf_ptr = (int16_t *)oecho->b_wptr;
-		WebRtcAecm_Process(s->AEC_inst, echo, buf_ptr, out_buf_ptr, s->framesize, 0);
 
-		if ( handleRms(s, &s->rms_out, echo, &rms) ) {				
+        // Запускает AECM на 80 или 160 выборочных блоках данных.
+		WebRtcAecm_Process(s->AEC_inst,
+                           // Входящий буфер, содержащий один опорный кадр ближнего конца + эхо-сигнал.
+                           // Если шумоподавление активно, укажите шумовой сигнал здесь.
+						   echo,
+                           // Входящий буфер, содержащий один кадр ближнего конца + эхо-сигнал.
+                           // Если шумоподавление активно, укажите здесь чистый сигнал.
+                           // В противном случае передайте указатель NULL.
+						   buf_ptr,
+                           // Исходящий  буфер, содержащий один обработанный кадр ближнего конца
+						   out_buf_ptr,
+                           // Количество выборок в ближнем буфере
+						   s->framesize,
+                           // Оценка задержки для звуковой карты и системных буферов
+						   0);
+
+		if ( handleRms(s, &s->rms_out, echo, &rms) ) {
+			// фрейм заполнен?
+			// Среднее квадратов < 150 ???
 			if (rms < 150) { // todo
+			    // Обнуляем выходной буфер
 				memset(oecho->b_wptr, 0, nbytes);
 			}
 		}
@@ -318,6 +352,7 @@ static void webrtc_ec_process(MSFilter *f)
 #endif
 
 		oecho->b_wptr += nbytes;
+		// ------------ Отправляем данные удаленному абоненту OUTPUTS[1] -------------
 		ms_queue_put(f->outputs[1], oecho);
 	}
 }
